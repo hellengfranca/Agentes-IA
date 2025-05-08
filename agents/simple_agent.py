@@ -1,16 +1,22 @@
 import resources
 import random
+import pygame
+import constantes
 class SimpleAgent:
-    def __init__(self, name, x, y, grid, x_base, y_base, obstacles):
+    def __init__(self, name, env, x, y, grid, x_base, y_base, obstacles):
         self.name = name
+        self.env = env
         self.x = x #posicao inicial
         self.y = y #posicao inicia
         self.grid = grid # representacao do terreno
         self.x_base = x_base 
         self.y_base = y_base
-        self.resources_collected = []
+        self.resources_collected = 0
         self.obstacles = obstacles
-        self.in_storm = False
+        self.color = constantes.BLUE
+        self.em_tempestade = False
+        self.resources = grid
+        self.process = env.process(self.run())
 
     def move_random(self):
         moves = [
@@ -26,15 +32,15 @@ class SimpleAgent:
         
         obstacle_positions = [(obstacle.x, obstacle.y) for obstacle in self.obstacles]
 
-        dx, dy = random.choice(moves)
-        new_x, new_y = dx, dy
+        random.shuffle(moves)  # Embaralha as direções para mais variedade
+        for dx, dy in moves:
+            new_x = max(0, min(self.x + dx, constantes.GRID_WIDTH - 1))
+            new_y = max(0, min(self.y + dy, constantes.GRID_HEIGHT - 1))
 
-        if (0 <= new_x < len(self.grid)) and (0 <= new_y < len(self.grid[0])):
-            if (new_x, new_y) not in obstacle_positions: 
+            if (new_x, new_y) not in obstacle_positions:
+                # Move o agente para a posição válida
                 self.x, self.y = new_x, new_y
-                return 
-            
-        print(f"{self.name} nao pode se mover")
+                return  # Sai do método após um movimento válido
 
     '''def verify_collected(self):
         # verificar recursos que foram coletados
@@ -43,7 +49,7 @@ class SimpleAgent:
                 SimpleAgent.base_comeback(self)
         return 0'''
 
-    def collect_resource(self, resource):
+    def collect_resource(self):
         for resource in self.grid:
                 # Verificar se o recurso está na vizinhança
                 if (
@@ -59,14 +65,30 @@ class SimpleAgent:
                     return True  # Recurso coletado
         return False  # Nenhum recurso coletado
 
-    def base_comeback(self):
-        while self.x != self.base_x or self.y != self.base_y:
-            dx = self.base_x - self.x
-            dy = self.base_y - self.y
+    def return_to_base(self):
+        while self.x != self.x_base or self.y != self.y_base:
+            dx = self.x_base - self.x
+            dy = self.y_base - self.y
             self.x += 1 if dx > 0 else -1 if dx < 0 else 0
             self.y += 1 if dy > 0 else -1 if dy < 0 else 0
-            return 
-        
+            yield self.env.timeout(1)
+    
+    def run(self):
+        while True:
+            if self.em_tempestade:
+                yield from self.return_to_base()
+                self.em_tempestade = False
+            else:
+                collected = self.collect_resource()
+                if collected:
+                    yield from self.return_to_base()  # Retorna à base para deixar o cristal
+                else:
+                    self.move_random()  # Caso contrário, continua se movendo
+                yield self.env.timeout(1)
+
+    def desenhar(self, screen):
+        pygame.draw.circle(screen, self.color, (self.x * 20 + 10, self.y * 20 + 10), 8)
+
     # se mover pelo terreno (matriz bidimensional)
     # coletar recurso
     # 

@@ -1,7 +1,7 @@
 import random
 
 class Resource:
-     def __init__(self, x, y, resource_type, required_agents=1):
+    def __init__(self, x, y, resource_type, required_agents):
         self.x = x
         self.y = y
         self.type = resource_type
@@ -16,3 +16,8 @@ class Resource:
             "metais": (192, 192, 192),
         }.get(resource_type, (255, 255, 255))
 
+    def copy(self):
+        """Cria uma cópia independente deste recurso"""
+        new_resource = Resource(self.x, self.y, self.type, self.required_agents)
+        new_resource.collected = self.collected
+        return new_resource
