@@ -27,66 +27,60 @@ class GoalAgent():
         self.process = env.process(self.run())
 
     def move_to_goal(self, resource):
-
         dx = resource.x - self.x
         dy = resource.y - self.y
-
-        # Calcula distância Manhattan para priorização
-        distance = abs(dx) + abs(dy)
 
         # Movimentos preferidos (direção do recurso)
         preferred_moves = []
         if dx != 0:
+            # Garante que o movimento no eixo X não ultrapasse os limites
             new_x = self.x + (1 if dx > 0 else -1)
-            if 0 <= new_x < constantes.GRID_WIDTH:
-                preferred_moves.append((new_x, self.y))
+            if 0 <= new_x < constantes.GRID_WIDTH:  # Verificação dos limites
+                preferred_moves.append((new_x, self.y))  # Eixo X
         if dy != 0:
+            # Garante que o movimento no eixo Y não ultrapasse os limites
             new_y = self.y + (1 if dy > 0 else -1)
-            if 0 <= new_y < constantes.GRID_HEIGHT:
-                preferred_moves.append((self.x, new_y))
+            if 0 <= new_y < constantes.GRID_HEIGHT:  # Verificação dos limites
+                preferred_moves.append((self.x, new_y))  # Eixo Y
 
-        # Adiciona movimentos diagonais como alternativas
-        alter_moves = [
-            (self.x + dx, self.y + dy)
-            for dx in [-1, 0, 1]
-            for dy in [-1, 0, 1]
-            if (dx != 0 or dy != 0)  # Exclui a posição atual
+        # Alternativas (diagonais e vizinhos)
+        alternative_moves = [
+            (self.x + 1, self.y),
+            (self.x - 1, self.y),
+            (self.x, self.y + 1),
+            (self.x, self.y - 1),
+            (self.x + 1, self.y + 1),
+            (self.x + 1, self.y - 1),
+            (self.x - 1, self.y + 1),
+            (self.x - 1, self.y - 1),
         ]
 
-        # Filtra movimentos válidos
+        # Filtrar movimentos alternativos que não ultrapassem os limites
+        alternative_moves = [
+            move
+            for move in alternative_moves
+            if 0 <= move[0] < constantes.GRID_WIDTH
+            and 0 <= move[1] < constantes.GRID_HEIGHT
+        ]
+
+        # Combina movimentos preferidos e alternativos
+        all_moves = preferred_moves + [
+            move for move in alternative_moves if move not in preferred_moves
+        ]
+
+        # Filtrar movimentos válidos (não colidir com obstáculos e evitar retorno imediato)
         valid_moves = [
-            move for move in (preferred_moves + alter_moves)
-            if (0 <= move[0] < constantes.GRID_WIDTH and
-                0 <= move[1] < constantes.GRID_HEIGHT and
-                move not in [(o.x, o.y) for o in self.obstacles] and
-                move != self.previous_position)
+            move
+            for move in all_moves
+            if move not in [(obstacle.x, obstacle.y) for obstacle in self.obstacles]
+            and move != self.previous_position  # Evitar retorno imediato
         ]
 
-        if not valid_moves:
-            # Se não houver movimentos válidos, tenta ignorar a posição anterior
-            valid_moves = [
-                move for move in (preferred_moves + alter_moves)
-                if (0 <= move[0] < constantes.GRID_WIDTH and
-                    0 <= move[1] < constantes.GRID_HEIGHT and
-                    move not in [(o.x, o.y) for o in self.obstacles])
-            ]
-
+        # Se houver movimentos válidos, escolher o primeiro
         if valid_moves:
-            # Escolhe o movimento que mais reduz a distância ao recurso
-            def distance_to_resource(move):
-                return abs(move[0] - resource.x) + abs(move[1] - resource.y)
-
-            # Ordena movimentos pela proximidade ao recurso
-            valid_moves.sort(key=distance_to_resource)
-            
-            # Escolhe aleatoriamente entre os 3 melhores movimentos
-            best_moves = valid_moves[:min(3, len(valid_moves))]
-            chosen_move = random.choice(best_moves)
-            
-            self.previous_position = (self.x, self.y)
-            self.x, self.y = chosen_move
-        else:
-            print(f"Agente {self.name} bloqueado em ({self.x}, {self.y})")
+            self.previous_position = (self.x, self.y)  # Atualiza a posição anterior
+            self.x, self.y = valid_moves[0]
+        
 
     def collect_resource(self):
         """Tenta coletar recurso na posição atual, se for coletável"""
@@ -158,7 +152,7 @@ class GoalAgent():
                 yield from self.return_to_base()
                 self.carregando_recurso = False
                 self.recurso_carregado = None
-                yield self.env.timeout(1)
+                yield self.env.timeout(4)
                 continue
             
             # 2. Se está carregando recurso, retorna à base
