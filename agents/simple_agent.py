@@ -3,8 +3,8 @@ import random
 import pygame
 import constantes
 class SimpleAgent:
-    def __init__(self, name, env, x, y, grid, x_base, y_base, obstacles):
-        self.name = name
+    def __init__(self, nome, env, x, y, grid, x_base, y_base, obstacles):
+        self.nome = nome
         self.env = env
         self.x = x #posicao inicial
         self.y = y #posicao inicia
@@ -86,8 +86,11 @@ class SimpleAgent:
                     self.move_random()  # Caso contrário, continua se movendo
                 yield self.env.timeout(1)
 
-    def desenhar(self, screen):
-        pygame.draw.circle(screen, self.color, (self.x * 20 + 10, self.y * 20 + 10), 8)
+    def desenhar(self, tela):
+        pygame.draw.rect(tela, (255, 255, 255), (self.x * 20, self.y * 20, 20, 20))
+        fonte = pygame.font.SysFont("arial", 8)
+        letra = fonte.render("S", True, (0, 0, 0))
+        tela.blit(letra, (self.x * 20 + 6, self.y * 20 + 2))
 
     # se mover pelo terreno (matriz bidimensional)
     # coletar recurso
