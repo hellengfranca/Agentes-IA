@@ -1,6 +1,7 @@
 import random
 import pygame
 import constantes
+from collections import deque
 
 class AgenteCoperativo:
     def __init__(self, nome, ambiente, x, y, recursos, base_x, base_y, obstaculos, todos_os_agentes,agente_bdi):
@@ -20,6 +21,8 @@ class AgenteCoperativo:
         self.pontuacao = 0
         self.em_tempestade = False
         self.cor = (0, 0, 255)
+        self.pilha_chamadas = deque() # pilha de chamadas 
+        self.retornando_base = False  # Flag para controle de estado
 
         # Matriz de posições visitadas
         self.visitado = [[False for _ in range(constantes.GRID_HEIGHT)] for _ in range(constantes.GRID_WIDTH)]
@@ -28,8 +31,29 @@ class AgenteCoperativo:
         self.processo = ambiente.process(self.run())
 
     def receber_chamada(self, recurso):
-        if recurso and not recurso.collected:
-            self.recurso_chamado = recurso
+        if not recurso.collected and recurso not in self.pilha_chamadas:
+            self.pilha_chamadas.append(recurso)
+
+    def processar_chamadas(self):
+        while True:
+            if self.retornando_base:
+                # Aguardar chegar na base
+                yield "retornando"
+                self.retornando_base = False
+                
+            elif self.recurso_carregado and not self.recurso_carregado.collected:
+                # Processar chamada atual
+                yield f"processando {self.chamada_ativa.type}"
+                
+            elif self.pilha_chamadas:
+                # Pegar nova chamada da pilha
+                self.recurso_carregado = self.pilha_chamadas.pop()
+                self.retornando_base = True
+                yield f"iniciando {self.recurso_carregado.type}"
+                
+            else:
+                # Sem chamadas pendentes
+                yield "aguardando"
 
     def mover_ate(self, destino_x, destino_y):
         while (self.x, self.y) != (destino_x, destino_y):
@@ -47,7 +71,9 @@ class AgenteCoperativo:
             yield self.ambiente.timeout(1)
 
     def retornar_para_base(self):
+        self.retornando_base = True
         yield from self.mover_ate(self.base_x, self.base_y)
+        self.retornando_base = False
 
     def mover_explorando(self):
         vizinhos = [(self.x + dx, self.y + dy) for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]]
@@ -95,6 +121,14 @@ class AgenteCoperativo:
             self.visitado[self.x][self.y] = True
             yield self.ambiente.timeout(1)
 
+    def atualizar_bdi(self):
+        if self.agente_bdi:
+            self.agente_bdi.atualizar_visitado(self.visitado)
+            bdi_map = self.agente_bdi.fornecer_visitado()
+            for i in range(constantes.GRID_WIDTH):
+                for j in range(constantes.GRID_HEIGHT):
+                    if bdi_map[i][j]:
+                        self.visitado[i][j] = True
     def run(self):
         # Marcar a área da base como visitada
         for i in range(5):
@@ -107,17 +141,8 @@ class AgenteCoperativo:
         while True:
             if self.em_tempestade:
                 yield from self.retornar_para_base()
-                if self.agente_bdi:
-                    self.agente_bdi.atualizar_visitado(self.visitado)
-                    bdi_map = self.agente_bdi.fornecer_visitado()
-                    for i in range(constantes.GRID_WIDTH):
-                        for j in range(constantes.GRID_HEIGHT):
-                            if bdi_map[i][j]:
-                                self.visitado[i][j] = True
-                
-                
+                self.atualizar_bdi()
                 self.em_tempestade = False
-
 
             elif self.carregando_recurso:
                 yield from self.retornar_para_base()
@@ -126,40 +151,31 @@ class AgenteCoperativo:
                     print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (coletou {self.recurso_carregado.type})")
                 self.carregando_recurso = False
                 self.recurso_carregado = None
-                
-                if self.agente_bdi:
-                    self.agente_bdi.atualizar_visitado(self.visitado)
-                    bdi_map = self.agente_bdi.fornecer_visitado()
-                    for i in range(constantes.GRID_WIDTH):
-                        for j in range(constantes.GRID_HEIGHT):
-                            if bdi_map[i][j]:
-                                self.visitado[i][j] = True
-                
+                self.atualizar_bdi()
                 yield from self.mover_para_fora_da_base()
 
-            elif self.recurso_chamado and not self.recurso_chamado.collected:
-                yield from self.mover_ate(self.recurso_chamado.x, self.recurso_chamado.y)
+            elif self.pilha_chamadas:
+                # Processa a próxima chamada na pilha
+                recurso_alvo = self.pilha_chamadas.pop()
+                yield from self.mover_ate(recurso_alvo.x, recurso_alvo.y)
 
-                agentes_proximos = [
-                    agente for agente in self.todos_os_agentes
-                    if agente != self and abs(agente.x - self.x) <= 1 and abs(agente.y - self.y) <= 1
-                ]
+                # Verifica se conseguiu coletar o recurso
+                if self.coletar_recurso():
+                    self.carregando_recurso = True
+                else:
+                    # Verifica se há agentes próximos para cooperar
+                    agentes_proximos = [
+                        agente for agente in self.todos_os_agentes
+                        if agente != self and abs(agente.x - self.x) <= 1 and abs(agente.y - self.y) <= 1
+                    ]
 
-                if agentes_proximos:
-                    self.recurso_chamado.collected = True
-                    self.pontuacao += self.recurso_chamado.value
-                    print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (ajudou com {self.recurso_chamado.type})")
-                    self.recurso_chamado = None
-                    yield from self.retornar_para_base()
-                    if self.agente_bdi:
-                        self.agente_bdi.atualizar_visitado(self.visitado)
-                        bdi_map = self.agente_bdi.fornecer_visitado()
-                        for i in range(constantes.GRID_WIDTH):
-                            for j in range(constantes.GRID_HEIGHT):
-                                if bdi_map[i][j]:
-                                    self.visitado[i][j] = True
-                        
-                    yield from self.mover_para_fora_da_base()
+                    if agentes_proximos and not recurso_alvo.collected:
+                        recurso_alvo.collected = True
+                        self.pontuacao += recurso_alvo.value
+                        print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (ajudou com {recurso_alvo.type})")
+                        yield from self.retornar_para_base()
+                        self.atualizar_bdi()
+                        yield from self.mover_para_fora_da_base()
 
             else:
                 if not self.coletar_recurso():
@@ -172,3 +188,92 @@ class AgenteCoperativo:
         fonte = pygame.font.SysFont("arial", 8)
         letra = fonte.render("C", True, (0, 0, 0))
         tela.blit(letra, (self.x * 20 + 6, self.y * 20 + 2))
+
+'''def run(self):
+# Marcar a área da base como visitada
+for i in range(5):
+for j in range(5):
+self.visitado[i][j] = True
+
+# Primeira ação: sair da base
+yield from self.mover_para_fora_da_base()
+
+while True:
+if self.em_tempestade:
+yield from self.retornar_para_base()
+self.atualizar_bdi()
+
+self.em_tempestade = False
+
+
+elif self.carregando_recurso:
+yield from self.retornar_para_base()
+if self.recurso_carregado:
+self.pontuacao += self.recurso_carregado.value
+print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (coletou {self.recurso_carregado.type})")
+self.carregando_recurso = False
+self.recurso_carregado = None
+
+self.atualizar_bdi()
+
+yield from self.mover_para_fora_da_base()
+
+elif self.pilha_chamadas:
+# Processa a próxima chamada na pilha
+recurso_alvo = self.pilha_chamadas.pop()
+yield from self.mover_ate(recurso_alvo.x, recurso_alvo.y)
+
+agentes_proximos = [
+agente for agente in self.todos_os_agentes
+if agente != self and abs(agente.x - self.x) <= 1 and abs(agente.y - self.y) <= 1
+]
+
+if agentes_proximos:
+self.recurso_chamado.collected = True
+self.pontuacao += self.recurso_chamado.value
+print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (ajudou com {self.recurso_chamado.type})")
+self.recurso_chamado = None
+yield from self.retornar_para_base()
+self.atualizar_bdi()
+    
+yield from self.mover_para_fora_da_base()
+
+# Verifica se conseguiu coletar o recurso
+if self.coletar_recurso():
+self.carregando_recurso = True
+else:
+# Se não coletou, o recurso já foi pego por outro agente
+self.recurso_chamado = None'''
+
+'''elif self.recurso_chamado and not self.recurso_chamado.collected:
+self.processo_chamadas = self.processar_chamadas()
+yield from self.mover_ate(self.recurso_chamado.x, self.recurso_chamado.y)
+
+agentes_proximos = [
+agente for agente in self.todos_os_agentes
+if agente != self and abs(agente.x - self.x) <= 1 and abs(agente.y - self.y) <= 1
+]
+
+if agentes_proximos:
+self.recurso_chamado.collected = True
+self.pontuacao += self.recurso_chamado.value
+print(f"[COOPERATIVO] Pontuação atual: {self.pontuacao} (ajudou com {self.recurso_chamado.type})")
+self.recurso_chamado = None
+yield from self.retornar_para_base()
+if self.agente_bdi:
+    self.agente_bdi.atualizar_visitado(self.visitado)
+    bdi_map = self.agente_bdi.fornecer_visitado()
+    for i in range(constantes.GRID_WIDTH):
+        for j in range(constantes.GRID_HEIGHT):
+            if bdi_map[i][j]:
+                self.visitado[i][j] = True
+    
+yield from self.mover_para_fora_da_base()'''
+
+'''else:
+if not self.coletar_recurso():
+self.mover_explorando()
+
+yield self.ambiente.timeout(1)'''
+
+    

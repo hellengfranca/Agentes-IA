@@ -64,6 +64,15 @@ class AgenteBaseadoEmEstado:
     def retornar_para_base(self):
         yield from self.mover_ate(self.base_x, self.base_y)
 
+    def atualizar_bdi(self):
+        if self.agente_bdi:
+            self.agente_bdi.atualizar_visitado(self.visitado)
+            bdi_map = self.agente_bdi.fornecer_visitado()
+            for i in range(constantes.GRID_WIDTH):
+                for j in range(constantes.GRID_HEIGHT):
+                    if bdi_map[i][j]:
+                        self.visitado[i][j] = True
+
     def run(self):
         for i in range(5):
             for j in range(5):
@@ -75,27 +84,14 @@ class AgenteBaseadoEmEstado:
             if self.em_tempestade:
                 yield from self.retornar_para_base()
 
-                if self.agente_bdi:
-                    self.agente_bdi.atualizar_visitado(self.visitado)
-                    bdi_map = self.agente_bdi.fornecer_visitado()
-                    for i in range(constantes.GRID_WIDTH):
-                        for j in range(constantes.GRID_HEIGHT):
-                            if bdi_map[i][j]:
-                                self.visitado[i][j] = True
+                self.atualizar_bdi()
                                 
                 self.em_tempestade = False
                
             elif self.carregando_recurso:
                 yield from self.retornar_para_base()
                 
-                if self.agente_bdi:
-                    self.agente_bdi.atualizar_visitado(self.visitado)
-                    bdi_map = self.agente_bdi.fornecer_visitado()
-                    for i in range(constantes.GRID_WIDTH):
-                        for j in range(constantes.GRID_HEIGHT):
-                            if bdi_map[i][j]:
-                                self.visitado[i][j] = True
-                
+                self.atualizar_bdi()
                 
                 if self.recurso_carregado:
                     self.pontuacao += self.recurso_carregado.value
@@ -122,13 +118,7 @@ class AgenteBaseadoEmEstado:
                     if self.recurso_carregado:
                         self.pontuacao += self.recurso_carregado.value
                         print(f"[ESTADO] Pontuação atual: {self.pontuacao} (coletou {self.recurso_carregado.type})")
-                    if self.agente_bdi:
-                        self.agente_bdi.atualizar_visitado(self.visitado)
-                        bdi_map = self.agente_bdi.fornecer_visitado()
-                        for i in range(constantes.GRID_WIDTH):
-                            for j in range(constantes.GRID_HEIGHT):
-                                if bdi_map[i][j]:
-                                    self.visitado[i][j] = True
+                    self.atualizar_bdi()
                         
                     self.carregando_recurso = False
                     self.recurso_carregado = None

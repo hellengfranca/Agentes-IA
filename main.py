@@ -118,7 +118,7 @@ def main():
         agente_bdi
     )
 
-    agente_goal = GoalAgent("Objetivo", ambiente, 2, 2, recursos, 0, 0, obstaculos)
+    agente_goal = GoalAgent("Objetivo", ambiente, 2, 2, recursos, 0, 0, obstaculos, agente_coop, agente_bdi)
     agente_simple = SimpleAgent("Simples", ambiente, 3, 1, recursos, 0, 0, obstaculos)
 
     # Lista final de agentes
