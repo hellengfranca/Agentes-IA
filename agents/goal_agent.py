@@ -2,195 +2,97 @@ import constantes
 import random
 import pygame
 
-class GoalAgent():
-    def __init__(self, name, env, x, y, grid, x_base, y_base, obstacles):
-        self.name = name
-        self.env = env
+class GoalAgent:
+    def __init__(self, nome, ambiente, x, y, recursos, base_x, base_y, obstaculos):
+        self.nome = nome
+        self.ambiente = ambiente
         self.x = x
         self.y = y
-        self.grid = grid
-        self.x_base = x_base 
-        self.y_base = y_base
-        self.resources = grid
+        self.base_x = base_x
+        self.base_y = base_y
+        self.recursos = recursos
+        self.obstaculos = obstaculos
         self.resources_collected = 0
-        self.resources_to_collect = [
-            resource 
-            for resource in grid 
-            if not resource.collected and resource.type in ["cristal", "metal"]
-        ]
-        self.obstacles = obstacles
-        self.color = constantes.PINK
         self.em_tempestade = False
-        self.previous_position = None  
-        self.carregando_recurso = False
-        self.recurso_carregado = None
-        self.process = env.process(self.run())
+        self.conhecimento_compartilhado = {}  # Novo atributo
+        self.cor = (255, 255, 0)
+        self.carregandoRecurso = False
+        self.processo = ambiente.process(self.run())
 
-    def move_to_goal(self, resource):
-        dx = resource.x - self.x
-        dy = resource.y - self.y
+    def mover_ate(self, destino_x, destino_y):
+        while (self.x, self.y) != (destino_x, destino_y):
+            dx = destino_x - self.x
+            dy = destino_y - self.y
+            proximo_x = self.x + (1 if dx > 0 else -1 if dx < 0 else 0)
+            proximo_y = self.y + (1 if dy > 0 else -1 if dy < 0 else 0)
 
-        # Movimentos preferidos (direção do recurso)
-        preferred_moves = []
-        if dx != 0:
-            # Garante que o movimento no eixo X não ultrapasse os limites
-            new_x = self.x + (1 if dx > 0 else -1)
-            if 0 <= new_x < constantes.GRID_WIDTH:  # Verificação dos limites
-                preferred_moves.append((new_x, self.y))  # Eixo X
-        if dy != 0:
-            # Garante que o movimento no eixo Y não ultrapasse os limites
-            new_y = self.y + (1 if dy > 0 else -1)
-            if 0 <= new_y < constantes.GRID_HEIGHT:  # Verificação dos limites
-                preferred_moves.append((self.x, new_y))  # Eixo Y
+            if (proximo_x, proximo_y) not in [(obs.x, obs.y) for obs in self.obstaculos]:
+                self.x, self.y = proximo_x, proximo_y
+            else:
+                self.mover_explorando()
 
-        # Alternativas (diagonais e vizinhos)
-        alternative_moves = [
-            (self.x + 1, self.y),
-            (self.x - 1, self.y),
-            (self.x, self.y + 1),
-            (self.x, self.y - 1),
-            (self.x + 1, self.y + 1),
-            (self.x + 1, self.y - 1),
-            (self.x - 1, self.y + 1),
-            (self.x - 1, self.y - 1),
+            yield self.ambiente.timeout(1)
+
+    def mover_explorando(self):
+        vizinhos = [(self.x + dx, self.y + dy) for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]]
+        livres = [
+            (nx, ny) for nx, ny in vizinhos
+            if 0 <= nx < constantes.GRID_WIDTH and 0 <= ny < constantes.GRID_HEIGHT
+            and (nx, ny) not in [(o.x, o.y) for o in self.obstaculos]
         ]
+        if livres:
+            self.x, self.y = random.choice(livres)
 
-        # Filtrar movimentos alternativos que não ultrapassem os limites
-        alternative_moves = [
-            move
-            for move in alternative_moves
-            if 0 <= move[0] < constantes.GRID_WIDTH
-            and 0 <= move[1] < constantes.GRID_HEIGHT
-        ]
+    def encontrar_recurso_mais_proximo(self):
+        min_dist = float('inf')
+        alvo = None
+        for recurso in self.recursos:
+            if not recurso.collected and recurso.type in ["cristal", "metais"]:
+                dist = abs(recurso.x - self.x) + abs(recurso.y - self.y)
+                if dist < min_dist:
+                    min_dist = dist
+                    alvo = recurso
+        return alvo
 
-        # Combina movimentos preferidos e alternativos
-        all_moves = preferred_moves + [
-            move for move in alternative_moves if move not in preferred_moves
-        ]
-
-        # Filtrar movimentos válidos (não colidir com obstáculos e evitar retorno imediato)
-        valid_moves = [
-            move
-            for move in all_moves
-            if move not in [(obstacle.x, obstacle.y) for obstacle in self.obstacles]
-            and move != self.previous_position  # Evitar retorno imediato
-        ]
-
-        # Se houver movimentos válidos, escolher o primeiro
-        if valid_moves:
-            self.previous_position = (self.x, self.y)  # Atualiza a posição anterior
-            self.x, self.y = valid_moves[0]
-        
-
-    def collect_resource(self):
-        """Tenta coletar recurso na posição atual, se for coletável"""
-        current_pos = (self.x, self.y)
-        
-        # Procura por recursos não coletados na posição atual
-        for resource in self.resources_to_collect[:]:  # Usamos cópia da lista para poder remover itens
-            if not resource.collected and (resource.x, resource.y) == current_pos:
-                if resource.type in ["cristal", "metais"]:
-                    resource.collected = True
-                    self.carregando_recurso = True
-                    self.recurso_carregado = resource
-                    self.resources_collected += resource.value
-                    self.resources_to_collect.remove(resource)
+    def coletar_recurso(self):
+        vizinhos = [(self.x + dx, self.y + dy) for dx, dy in [(0,0), (0,1), (0,-1), (1,0), (-1,0)]]
+        for recurso in self.recursos:
+            if not recurso.collected and (recurso.x, recurso.y) in vizinhos:
+                if recurso.type in ["cristal", "metais"]:
+                    self.conhecimento_compartilhado[(recurso.x, recurso.y)] = "disponível"
+                    recurso.collected = True
+                    self.carregandoRecurso = True
+                    self.resources_collected += recurso.value
+                    self.retornar_para_base()
                     return True
+
+        
         return False
-        # Nenhum recurso coletado
-            
-    def return_to_base(self):
-        while self.x != self.x_base or self.y != self.y_base:
-            dx = self.x_base - self.x
-            dy = self.y_base - self.y
 
-            # Prioriza o movimento horizontal (x)
-            next_x = self.x + (1 if dx > 0 else -1 if dx < 0 else 0)
-            next_y = self.y + (1 if dy > 0 else -1 if dy < 0 else 0)
-
-            # Lista de obstáculos como tuplas
-            obstacle_positions = [(o.x, o.y) for o in self.obstacles]
-
-            # Verifica se o próximo movimento está bloqueado
-            if (next_x, self.y) in obstacle_positions:
-                next_x = self.x  # Fixa a posição X se bloqueada
-
-            if (self.x, next_y) in obstacle_positions:
-                next_y = self.y  # Fixa a posição Y se bloqueada
-
-            # Caso ambos estejam bloqueados, tenta desviar lateralmente
-            if (next_x, next_y) in obstacle_positions:
-                alternatives = [
-                    (self.x + 1, self.y),  # Tenta mover para direita
-                    (self.x - 1, self.y),  # Tenta mover para esquerda
-                    (self.x, self.y + 1),  # Tenta mover para baixo
-                    (self.x, self.y - 1),  # Tenta mover para cima
-                ]
-                # Filtra alternativas válidas
-                alternatives = [
-                    (alt_x, alt_y)
-                    for alt_x, alt_y in alternatives
-                    if 0 <= alt_x < constantes.GRID_WIDTH
-                    and 0 <= alt_y < constantes.GRID_HEIGHT
-                    and (alt_x, alt_y) not in obstacle_positions
-                ]
-                if alternatives:
-                    next_x, next_y = random.choice(
-                        alternatives
-                    )  # Escolhe uma posição válida
-
-            # Atualiza a posição do agente
-            self.x, self.y = next_x, next_y
-
-            # Aguarda o próximo passo no ambiente
-            yield self.env.timeout(1)
-
+    def retornar_para_base(self):
+        self.carregandoRecurso = False
+        yield from self.mover_ate(self.base_x, self.base_y)
+        
     def run(self):
         while True:
-            # 1. Prioridade: Tempestade - retornar à base
             if self.em_tempestade:
-                yield from self.return_to_base()
-                self.carregando_recurso = False
-                self.recurso_carregado = None
-                yield self.env.timeout(4)
-                continue
-            
-            # 2. Se está carregando recurso, retorna à base
-            if self.carregando_recurso:
-                yield from self.return_to_base()
-                self.carregando_recurso = False
-                self.recurso_carregado = None
-                yield self.env.timeout(1)
-                continue
-            
-            # 3. Atualiza lista de recursos disponíveis
-            self.resources_to_collect = [
-                r for r in self.grid 
-                if not r.collected and r.type in ["cristal", "metais"]
-            ]
-            
-            # 4. Se não há recursos, espera
-            if not self.resources_to_collect:
-                yield self.env.timeout(1)
-                continue
-            
-            # 5. Busca pelo recurso mais próximo
-            closest = min(
-                self.resources_to_collect,
-                key=lambda r: abs(self.x - r.x) + abs(self.y - r.y))
-            
-            # 6. Tenta coletar se já está no recurso
-            if (self.x, self.y) == (closest.x, closest.y):
-                if not self.collect_resource():
-                    # Se não conseguiu coletar, remove o recurso da lista
-                    self.resources_to_collect.remove(closest)
-                yield self.env.timeout(1)
-                continue
-            
-            # 7. Move-se em direção ao recurso
-            self.move_to_goal(closest)
-            yield self.env.timeout(1)
+                yield from self.retornar_para_base()
+                self.em_tempestade = False
 
-    def desenhar(self, screen):
-        """Desenha o agente na tela."""
-        pygame.draw.circle(screen, self.color, (self.x * 20 + 10, self.y * 20 + 10), 8)
+            if self.carregandoRecurso:
+                yield from self.retornar_para_base()
+                self.carregandoRecurso = False
+            else:
+                alvo = self.encontrar_recurso_mais_proximo()
+                if alvo:
+                    yield from self.mover_ate(alvo.x, alvo.y)
+                    self.coletar_recurso()
+                else:
+                    self.mover_explorando()
+
+            yield self.ambiente.timeout(1)
+    def desenhar(self, tela):
+        pygame.draw.rect(tela, (255, 255, 255), (self.x * 20, self.y * 20, 20, 20))
+        fonte = pygame.font.SysFont("arial", 8)
+        letra = fonte.render("O", True, (0, 0, 0))
+        tela.blit(letra, (self.x * 20 + 6, self.y * 20 + 2))
