@@ -1,7 +1,7 @@
 import random
 
 def Tempestade(env, agentes):
-    yield env.timeout(random.randint(60, 120))  # Aguarda antes de começar
+    yield env.timeout(random.randint(500, 1000))  # Aguarda antes de começar
 
     print(" Tempestade iniciada!")
 

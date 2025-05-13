@@ -58,12 +58,7 @@ def mostrar_tela_resultado(tela, agentes):
 
         for i, agente in enumerate(agentes):
             nome = agente.nome
-            if hasattr(agente, 'recursos_entregues'):
-                pontos = sum(r.value for r in agente.recursos_entregues)
-            elif hasattr(agente, 'resources_collected'):
-                pontos = agente.resources_collected
-            else:
-                pontos = 0            
+            pontos = getattr(agente, 'pontuacao', 0)  # Usa .pontuacao se existir; senão 0
             resultado = fonte.render(f"{nome}: {pontos} pontos", True, (255, 255, 255))
             tela.blit(resultado, (60, 100 + i * 40))
 
@@ -98,17 +93,40 @@ def main():
         [Resource(*gerar_posicao_valida(), "estrutura antiga", 2) for _ in range(7)]
     )
 
-    # Agentes
-    agente_coop = AgenteCoperativo("Cooperativo", ambiente, 1, 1, recursos, 0, 0, obstaculos, todos_os_agentes=None)
-    agente_estado = AgenteBaseadoEmEstado("Estado", ambiente, 1, 2, recursos, 0, 0, obstaculos, agente_coop)
+    # Criação dos agentes
     agente_bdi = AgenteBDI("BDI", ambiente, 2, 1, recursos, 0, 0, obstaculos)
+
+    agente_coop = AgenteCoperativo(
+        "Cooperativo",
+        ambiente,
+        1, 1,
+        recursos,
+        0, 0,
+        obstaculos,
+        todos_os_agentes=None,  # atualizado depois
+        agente_bdi=agente_bdi
+    )
+
+    agente_estado = AgenteBaseadoEmEstado(
+        "Estado",
+        ambiente,
+        1, 2,
+        recursos,
+        0, 0,
+        obstaculos,
+        agente_coop,
+        agente_bdi
+    )
+
     agente_goal = GoalAgent("Objetivo", ambiente, 2, 2, recursos, 0, 0, obstaculos)
     agente_simple = SimpleAgent("Simples", ambiente, 3, 1, recursos, 0, 0, obstaculos)
 
+    # Lista final de agentes
     agentes = [agente_estado, agente_coop, agente_bdi, agente_goal, agente_simple]
 
+    # Compartilhar lista completa com os agentes que precisam
     agente_coop.todos_os_agentes = agentes
-    agente_bdi.todos_os_agentes = agentes
+    agente_bdi.todos_os_agentes = agentes  # caso o BDI precise conhecer os outros
 
     ambiente.process(Tempestade(ambiente, agentes))
 

@@ -6,9 +6,9 @@ class SimpleAgent:
     def __init__(self, nome, env, x, y, grid, x_base, y_base, obstacles):
         self.nome = nome
         self.env = env
-        self.x = x #posicao inicial
-        self.y = y #posicao inicia
-        self.grid = grid # representacao do terreno
+        self.x = x 
+        self.y = y 
+        self.grid = grid 
         self.x_base = x_base 
         self.y_base = y_base
         self.resources_collected = 0

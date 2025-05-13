@@ -6,7 +6,7 @@ class Resource:
         self.y = y
         self.type = resource_type
         self.collected = False
-        self.value = {"cristal": 10, "estrutura_antiga": 50, "metais": 20}.get(
+        self.value = {"cristal": 10, "estrutura antiga": 50, "metais": 20}.get(
             resource_type, 0
         )
         self.required_agents = required_agents
